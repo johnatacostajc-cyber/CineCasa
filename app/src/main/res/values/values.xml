@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg">#0E0E12</color>
+    <color name="brand">#16161C</color>
+    <color name="accent">#E53935</color>
+    <color name="card_info">#1E1E26</color>
+    <color name="text_dim">#B3B3B3</color>
+
+    <string name="app_name">CineCasa</string>
+    <string name="login_title">Entrar na sua lista</string>
+    <string name="login_hint">Digite os dados que seu amigo passou. Se tiver um link completo com username e password, pode colar só ele no primeiro campo.</string>
+    <string name="server">Link do servidor (ex.: http://servidor.com:8080)</string>
+    <string name="user">Usuário</string>
+    <string name="password">Senha</string>
+    <string name="enter">Entrar</string>
+    <string name="play">▶  Assistir</string>
+    <string name="from_start">Do início</string>
+
+    <style name="AppTheme" parent="@style/Theme.Leanback">
+        <item name="android:windowBackground">@color/bg</item>
+        <item name="android:colorAccent">@color/accent</item>
+    </style>
+
+    <style name="PlayerTheme" parent="@style/AppTheme">
+        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:windowFullscreen">true</item>
+    </style>
+
+    <style name="TvButton">
+        <item name="android:background">@drawable/btn_tv</item>
+        <item name="android:textColor">@color/btn_text</item>
+        <item name="android:textSize">18sp</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:paddingLeft">28dp</item>
+        <item name="android:paddingRight">28dp</item>
+        <item name="android:minHeight">52dp</item>
+        <item name="android:focusable">true</item>
+        <item name="android:focusableInTouchMode">true</item>
+    </style>
+
+    <style name="TvEdit">
+        <item name="android:background">@drawable/edit_tv</item>
+        <item name="android:textColor">#FFFFFF</item>
+        <item name="android:textColorHint">#808080</item>
+        <item name="android:textSize">18sp</item>
+        <item name="android:padding">14dp</item>
+        <item name="android:singleLine">true</item>
+        <item name="android:layout_marginTop">12dp</item>
+    </style>
+</resources>
