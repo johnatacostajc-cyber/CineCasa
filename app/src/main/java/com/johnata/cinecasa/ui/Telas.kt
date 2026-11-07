@@ -59,13 +59,13 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 
 /** Desenha cada card (capa + título). wide = formato 16:9 para episódios. */
-class CardPresenter(private val wide: Boolean = false) : Presenter() {
+class CardPresenter(private val wide: Boolean = false, private val big: Boolean = false) : Presenter() {
 
     override fun onCreateViewHolder(parent: ViewGroup): ViewHolder {
         val ctx = parent.context
         val d = ctx.resources.displayMetrics.density
-        val w = ((if (wide) 260 else 150) * d).toInt()
-        val h = ((if (wide) 146 else 225) * d).toInt()
+        val w = ((if (wide) 260 else if (big) 210 else 150) * d).toInt()
+        val h = ((if (wide) 146 else if (big) 315 else 225) * d).toInt()
         val card = ImageCardView(ctx)
         card.isFocusable = true
         card.isFocusableInTouchMode = true
@@ -226,130 +226,6 @@ class MainActivity : FragmentActivity() {
     }
 }
 
-class MainFragment : BrowseSupportFragment() {
-
-    private val rowsAdapter = ArrayObjectAdapter(ListRowPresenter())
-    private val posters = CardPresenter()
-    private var continueRow: ListRow? = null
-    private var loaded = false
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        title = getString(R.string.app_name)
-        // Menu da esquerda começa escondido e só abre com a seta para a esquerda.
-        headersState = HEADERS_HIDDEN
-        isHeadersTransitionOnBackEnabled = true
-        brandColor = ContextCompat.getColor(requireContext(), R.color.brand)
-        searchAffordanceColor = ContextCompat.getColor(requireContext(), R.color.accent)
-        adapter = rowsAdapter
-
-        setOnSearchClickedListener {
-            startActivity(Intent(requireContext(), SearchActivity::class.java))
-        }
-        onItemViewClickedListener = OnItemViewClickedListener { _, item, _, _ ->
-            if (item is Item) Nav.open(requireActivity(), item)
-        }
-        load()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        if (loaded) refreshContinue()
-    }
-
-    private fun load() {
-        val acc = Prefs.account(requireContext()) ?: return
-        Toast.makeText(requireContext(), "Carregando catálogo…", Toast.LENGTH_SHORT).show()
-        lifecycleScope.launch {
-            val mCats = async { runCatching { Xtream.movieCategories(acc) }.getOrDefault(emptyList()) }
-            val mList = async { runCatching { Xtream.movies(acc) }.getOrDefault(emptyList()) }
-            val sCats = async { runCatching { Xtream.seriesCategories(acc) }.getOrDefault(emptyList()) }
-            val sList = async { runCatching { Xtream.series(acc) }.getOrDefault(emptyList()) }
-
-            val movies = mList.await()
-            val series = sList.await()
-            val movieCats = mCats.await()
-            val seriesCats = sCats.await()
-            Catalog.movies = movies
-            Catalog.series = series
-            Catalog.movieCats = movieCats
-            Catalog.seriesCats = seriesCats
-
-            rowsAdapter.clear()
-            continueRow = null
-            refreshContinue()
-
-            var headerId = 10L
-
-            // Fileira de streamings (Netflix, Disney+...) logo abaixo de "Continuar assistindo".
-            val services = Streaming.present(movieCats, movies, seriesCats, series)
-            if (services.isNotEmpty()) {
-                val a = ArrayObjectAdapter(ServicePresenter())
-                a.addAll(0, services.map { Item(Kind.SERVICE, it.id, it.name) })
-                rowsAdapter.add(ListRow(HeaderItem(headerId++, "Streamings"), a))
-            }
-
-            val recent = movies.filter { it.added > 0 }.sortedByDescending { it.added }.take(40)
-            if (recent.isNotEmpty()) addRow(headerId++, "Adicionados recentemente", recent)
-
-            // Categorias organizadas: nomes limpos, repetidas juntas e as de streaming ficam nos botões.
-            val notService = { c: Category -> Streaming.match(c.name) == null }
-            val movieShelves = shelves(movieCats, movies, notService, withOthers = true)
-            if (movieShelves.isNotEmpty()) {
-                rowsAdapter.add(SectionRow(HeaderItem(headerId++, "Filmes")))
-                for (s in movieShelves) addRow(headerId++, s.title, s.items)
-            }
-            val seriesShelves = shelves(seriesCats, series, notService, withOthers = true)
-            if (seriesShelves.isNotEmpty()) {
-                rowsAdapter.add(SectionRow(HeaderItem(headerId++, "Séries")))
-                for (s in seriesShelves) addRow(headerId++, s.title, s.items)
-            }
-
-            rowsAdapter.add(DividerRow())
-            addRow(headerId, "Conta", listOf(Item(Kind.ACTION, "logout", "Trocar conta / sair")))
-            loaded = true
-
-            if (movies.isEmpty() && series.isEmpty()) {
-                Toast.makeText(
-                    requireContext(),
-                    "Não encontrei filmes nem séries nessa lista. Confira a internet ou os dados de acesso.",
-                    Toast.LENGTH_LONG
-                ).show()
-            }
-        }
-    }
-
-    private fun addRow(id: Long, name: String, items: List<Item>) {
-        val a = ArrayObjectAdapter(posters)
-        a.addAll(0, items)
-        rowsAdapter.add(ListRow(HeaderItem(id, name), a))
-    }
-
-    private fun refreshContinue() {
-        val entries = History.list(requireContext())
-        val items = entries.map { e ->
-            val pct = if (e.dur > 0) ((e.pos * 100) / e.dur).toInt().coerceIn(0, 99) else 0
-            e.item.copy(progress = pct)
-        }
-        val row = continueRow
-        if (items.isEmpty()) {
-            if (row != null) {
-                rowsAdapter.remove(row)
-                continueRow = null
-            }
-            return
-        }
-        if (row == null) {
-            val newRow = ListRow(HeaderItem(1L, "Continuar assistindo"), ArrayObjectAdapter(posters))
-            rowsAdapter.add(0, newRow)
-            continueRow = newRow
-        }
-        val a = continueRow!!.adapter as ArrayObjectAdapter
-        a.clear()
-        a.addAll(0, items)
-    }
-}
-
 /** Uma fileira pronta: título já limpo e os itens dela. */
 class Shelf(val title: String, val items: List<Item>)
 
@@ -464,46 +340,6 @@ class ServiceActivity : FragmentActivity() {
             supportFragmentManager.beginTransaction()
                 .replace(R.id.main_frame, ServiceFragment())
                 .commit()
-        }
-    }
-}
-
-/** Tela de um streaming: filmes e séries das categorias dele. */
-class ServiceFragment : BrowseSupportFragment() {
-
-    private val rowsAdapter = ArrayObjectAdapter(ListRowPresenter())
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        val svc = requireActivity().intent.getItem()
-        if (svc == null) {
-            requireActivity().finish()
-            return
-        }
-        title = svc.title
-        headersState = HEADERS_HIDDEN
-        isHeadersTransitionOnBackEnabled = true
-        brandColor = ContextCompat.getColor(requireContext(), R.color.brand)
-        adapter = rowsAdapter
-        onItemViewClickedListener = OnItemViewClickedListener { _, item, _, _ ->
-            if (item is Item) Nav.open(requireActivity(), item)
-        }
-
-        val posters = CardPresenter()
-        val mine = { c: Category -> Streaming.match(c.name)?.id == svc.id }
-        var id = 1L
-        for (s in shelves(Catalog.movieCats, Catalog.movies, mine, withOthers = false)) {
-            val a = ArrayObjectAdapter(posters)
-            a.addAll(0, s.items)
-            rowsAdapter.add(ListRow(HeaderItem(id++, "Filmes · ${s.title}"), a))
-        }
-        for (s in shelves(Catalog.seriesCats, Catalog.series, mine, withOthers = false)) {
-            val a = ArrayObjectAdapter(posters)
-            a.addAll(0, s.items)
-            rowsAdapter.add(ListRow(HeaderItem(id++, "Séries · ${s.title}"), a))
-        }
-        if (rowsAdapter.size() == 0) {
-            Toast.makeText(requireContext(), "Nada encontrado. Volte à tela inicial e tente de novo.", Toast.LENGTH_LONG).show()
         }
     }
 }
@@ -667,55 +503,6 @@ class SearchActivity : FragmentActivity() {
     }
 }
 
-class SearchFragment : SearchSupportFragment(), SearchSupportFragment.SearchResultProvider {
-
-    private val rowsAdapter = ArrayObjectAdapter(ListRowPresenter())
-    private val posters = CardPresenter()
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setSearchResultProvider(this)
-        setOnItemViewClickedListener(OnItemViewClickedListener { _, item, _, _ ->
-            if (item is Item) Nav.open(requireActivity(), item)
-        })
-    }
-
-    override fun getResultsAdapter(): ObjectAdapter = rowsAdapter
-
-    override fun onQueryTextChange(newQuery: String): Boolean {
-        search(newQuery)
-        return true
-    }
-
-    override fun onQueryTextSubmit(query: String): Boolean {
-        search(query)
-        return true
-    }
-
-    private fun norm(s: String): String =
-        Normalizer.normalize(s, Normalizer.Form.NFD)
-            .replace(Regex("\\p{Mn}+"), "")
-            .lowercase()
-
-    private fun search(q: String) {
-        rowsAdapter.clear()
-        val query = norm(q.trim())
-        if (query.length < 2) return
-        val movies = Catalog.movies.filter { norm(it.title).contains(query) }.take(80)
-        val series = Catalog.series.filter { norm(it.title).contains(query) }.take(80)
-        if (movies.isNotEmpty()) {
-            val a = ArrayObjectAdapter(posters)
-            a.addAll(0, movies)
-            rowsAdapter.add(ListRow(HeaderItem(1L, "Filmes (${movies.size})"), a))
-        }
-        if (series.isNotEmpty()) {
-            val a = ArrayObjectAdapter(posters)
-            a.addAll(0, series)
-            rowsAdapter.add(ListRow(HeaderItem(2L, "Séries (${series.size})"), a))
-        }
-    }
-}
-
 class SeriesActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -745,7 +532,7 @@ class SeriesFragment : BrowseSupportFragment() {
         brandColor = ContextCompat.getColor(requireContext(), R.color.brand)
         adapter = rowsAdapter
         onItemViewClickedListener = OnItemViewClickedListener { _, item, _, _ ->
-            if (item is Item) Nav.open(requireActivity(), item)
+            asItem(item)?.let { Nav.open(requireActivity(), it) }
         }
 
         val acc = Prefs.account(requireContext()) ?: return

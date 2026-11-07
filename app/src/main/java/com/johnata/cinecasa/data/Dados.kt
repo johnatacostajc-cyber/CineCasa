@@ -45,6 +45,8 @@ data class Item(
         putOpt("rating", rating)
         putOpt("subtitle", subtitle)
         putOpt("seriesId", seriesId)
+        putOpt("categoryId", categoryId)
+        if (added > 0) put("added", added)
     }
 
     companion object {
@@ -58,6 +60,8 @@ data class Item(
                 rating = o.str("rating"),
                 subtitle = o.str("subtitle"),
                 seriesId = o.str("seriesId"),
+                categoryId = o.str("categoryId"),
+                added = o.optLong("added", 0L),
             )
         } catch (e: Exception) {
             null
@@ -196,7 +200,7 @@ object Xtream {
 
     private fun enc(s: String): String = URLEncoder.encode(s, "UTF-8")
 
-    private fun httpGet(start: String): String {
+    fun httpGet(start: String): String {
         var url = start
         repeat(6) {
             val conn = URL(url).openConnection() as HttpURLConnection
@@ -378,18 +382,13 @@ object Xtream {
     }
 }
 
-/** Catálogo carregado na tela inicial, reutilizado pela busca. */
-object Catalog {
-    @Volatile var movies: List<Item> = emptyList()
-    @Volatile var series: List<Item> = emptyList()
-    @Volatile var movieCats: List<Category> = emptyList()
-    @Volatile var seriesCats: List<Category> = emptyList()
-}
-
 data class Service(val id: String, val name: String, val keywords: List<String>)
 
 /** Reconhece categorias de streaming pelo nome (ex.: "FILMES | NETFLIX", "Séries Disney+"). */
 object Streaming {
+    private val marks = Regex("\\p{Mn}+")
+    private val nonAlnum = Regex("[^a-z0-9]+")
+
     val all = listOf(
         Service("netflix", "Netflix", listOf("netflix")),
         Service("disney", "Disney+", listOf("disney", "star plus")),
@@ -405,10 +404,10 @@ object Streaming {
     /** Minúsculas, sem acento, "+" vira " plus ", só letras e números, com espaço nas pontas. */
     fun norm(s: String): String {
         val n = Normalizer.normalize(s, Normalizer.Form.NFD)
-            .replace(Regex("\\p{Mn}+"), "")
+            .replace(marks, "")
             .lowercase()
             .replace("+", " plus ")
-            .replace(Regex("[^a-z0-9]+"), " ")
+            .replace(nonAlnum, " ")
             .trim()
         return " $n "
     }
@@ -442,12 +441,13 @@ object Names {
         "4k", "hd", "fhd", "uhd", "sd", "tv", "hbo", "dc", "3d", "eua", "ufc", "mma", "dvd",
         "br", "bbc", "mtv", "nba", "nfl", "ova", "lgbt", "lgbtqia"
     )
+    private val marks = Regex("\\p{Mn}+")
     private val lead = Regex("^[^\\p{L}\\p{N}]+")
     private val head = Regex("^([\\p{L}\\p{N}]+)(\\s*[|:•/–—-]+\\s*|\\s+)(.*)$")
 
     private fun plain(w: String): String =
         Normalizer.normalize(w, Normalizer.Form.NFD)
-            .replace(Regex("\\p{Mn}+"), "")
+            .replace(marks, "")
             .lowercase()
             .filter { it.isLetterOrDigit() }
 

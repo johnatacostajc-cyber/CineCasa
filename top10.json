@@ -1,0 +1,149 @@
+{
+  "updated": "2026-11-07",
+  "note": "Rankings publicos: Netflix Top 10 oficial do Brasil (semana 26/10 a 01/11/2026) e FlixPatrol (06/11/2026). Cada titulo traz nomes alternativos (ingles e portugues) para achar na lista.",
+  "trending": {
+    "movies": [
+      ["Collision Course", "Rota de Colisão"],
+      ["Moana"],
+      ["The Legend of Tarzan", "A Lenda de Tarzan"],
+      ["Apocalypse Z: New World", "Apocalipse Z: Novo Mundo", "Apocalipse Z"],
+      ["Coco", "Viva: A Vida é uma Festa"],
+      ["Toy Story 5"],
+      ["Matchbox"],
+      ["Anora"],
+      ["Home Alone", "Esqueceram de Mim"],
+      ["Final Destination: Bloodlines", "Premonição 6: Laços de Sangue", "Premonição 6"]
+    ],
+    "series": [
+      ["Lupin"],
+      ["The Terminal List", "Lista Terminal"],
+      ["The Gilded Age", "A Era Dourada"],
+      ["South Park"],
+      ["VisionQuest"],
+      ["Taken: Natalee Holloway"],
+      ["Tulsa King"],
+      ["Reacher"],
+      ["Ted Lasso"],
+      ["Grey's Anatomy"]
+    ]
+  },
+  "services": {
+    "netflix": {
+      "movies": [
+        ["Collision Course", "Rota de Colisão"],
+        ["Surviving Hurricane Otis", "Sobrevivendo ao Furacão Otis"],
+        ["Return to Sender", "Devolvido ao Remetente"],
+        ["This Is Not a Test", "Isto Não é um Teste"],
+        ["The Amazing Maurice", "O Incrível Maurício"],
+        ["Aliens in the Attic", "Alienígenas no Sótão"],
+        ["Anora"],
+        ["Sniper: The Last Stand", "Sniper: A Última Resistência"],
+        ["Anyone But You", "Todos Menos Você"],
+        ["Final Destination: Bloodlines", "Premonição 6: Laços de Sangue", "Premonição 6"]
+      ],
+      "series": [
+        ["Lupin"],
+        ["The Gift of Deceit"],
+        ["Dead-End Job"],
+        ["Where the Mask Ends"],
+        ["Doctor X: Mafia in White", "Doctor X"],
+        ["The One About Matthew Perry"],
+        ["Below"],
+        ["Taken: Natalee Holloway"],
+        ["A Couple of Lies"],
+        ["Black Doves", "Pombas Negras"]
+      ]
+    },
+    "disney": {
+      "movies": [
+        ["Moana", "Moana: Um Mar de Aventuras"],
+        ["Coco", "Viva: A Vida é uma Festa"],
+        ["Toy Story 5"],
+        ["Home Alone", "Esqueceram de Mim"],
+        ["The Grinch", "O Grinch"],
+        ["How the Grinch Stole Christmas", "O Grinch (2000)"],
+        ["Home Alone 2", "Esqueceram de Mim 2"],
+        ["The Nightmare Before Christmas", "O Estranho Mundo de Jack"]
+      ],
+      "series": [
+        ["VisionQuest"],
+        ["The Remarried Empress", "A Imperatriz Casada Novamente"],
+        ["All's Fair"],
+        ["The Kardashians"],
+        ["Merry Berry Love"],
+        ["Grey's Anatomy"],
+        ["WandaVision"]
+      ]
+    },
+    "prime": {
+      "movies": [
+        ["Apocalypse Z: New World", "Apocalipse Z: Novo Mundo", "Apocalipse Z"],
+        ["Drive - The Pretenders", "The Pretenders"],
+        ["Love of Your Life", "O Amor da Sua Vida"]
+      ],
+      "series": [
+        ["The Terminal List", "Lista Terminal"],
+        ["Carrie"],
+        ["Love in Disguise"],
+        ["Off Campus"],
+        ["Neagley"],
+        ["Reacher"]
+      ]
+    },
+    "max": {
+      "movies": [
+        ["The Legend of Tarzan", "A Lenda de Tarzan"],
+        ["Feed"],
+        ["The Hunger Games", "Jogos Vorazes"],
+        ["The Hunger Games: Catching Fire", "Jogos Vorazes: Em Chamas"],
+        ["The Hunger Games: Mockingjay - Part 1", "Jogos Vorazes: A Esperança - Parte 1"],
+        ["The Hunger Games: Mockingjay - Part 2", "Jogos Vorazes: A Esperança - O Final"]
+      ],
+      "series": [
+        ["The Gilded Age", "A Era Dourada"],
+        ["Georgie & Mandy's First Marriage", "O Primeiro Casamento de Georgie e Mandy"],
+        ["War"],
+        ["La Promesa", "A Promessa"],
+        ["Crystal Lake"],
+        ["Youth"]
+      ]
+    },
+    "paramount": {
+      "movies": [
+        ["Thieves Highway"],
+        ["Exit 8", "Saída 8"],
+        ["Scary Movie", "Todo Mundo em Pânico"],
+        ["The Bayou"],
+        ["Monster Summer", "Verão Monstruoso"],
+        ["Diablo"]
+      ],
+      "series": [
+        ["South Park"],
+        ["Tulsa King"],
+        ["MobLand"],
+        ["Marshals"],
+        ["Yellowstone"],
+        ["Dexter"],
+        ["Dexter: Resurrection", "Dexter: Ressurreição"]
+      ]
+    },
+    "apple": {
+      "movies": [
+        ["Matchbox"],
+        ["Mayday"],
+        ["Tenzing"],
+        ["F1", "F1: O Filme"],
+        ["The Gorge", "Ameaça no Abismo"]
+      ],
+      "series": [
+        ["Nocturne"],
+        ["Stick"],
+        ["Ted Lasso"],
+        ["Slow Horses"],
+        ["Silo"],
+        ["Dark Matter", "Matéria Escura"],
+        ["Severance", "Ruptura"]
+      ]
+    }
+  }
+}
