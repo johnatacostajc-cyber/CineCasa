@@ -43,6 +43,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import com.bumptech.glide.Glide
+import com.bumptech.glide.load.DecodeFormat
 import com.johnata.cinecasa.R
 import com.johnata.cinecasa.data.Account
 import com.johnata.cinecasa.data.Catalog
@@ -61,6 +62,9 @@ import kotlinx.coroutines.launch
 /** Desenha cada card (capa + título). wide = formato 16:9 para episódios. */
 class CardPresenter(private val wide: Boolean = false, private val big: Boolean = false) : Presenter() {
 
+    private var imgW = 0
+    private var imgH = 0
+
     override fun onCreateViewHolder(parent: ViewGroup): ViewHolder {
         val ctx = parent.context
         val d = ctx.resources.displayMetrics.density
@@ -70,6 +74,8 @@ class CardPresenter(private val wide: Boolean = false, private val big: Boolean 
         card.isFocusable = true
         card.isFocusableInTouchMode = true
         card.setMainImageDimensions(w, h)
+        imgW = w
+        imgH = h
         card.setInfoAreaBackgroundColor(ContextCompat.getColor(ctx, R.color.card_info))
         return ViewHolder(card)
     }
@@ -86,6 +92,8 @@ class CardPresenter(private val wide: Boolean = false, private val big: Boolean 
         }
         Glide.with(card.context)
             .load(it.poster)
+            .override(imgW, imgH)
+            .format(DecodeFormat.PREFER_RGB_565)
             .centerCrop()
             .placeholder(placeholder())
             .error(placeholder())

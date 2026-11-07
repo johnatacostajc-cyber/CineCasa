@@ -25,26 +25,44 @@ object Catalog {
     private val serviceCache = ConcurrentHashMap<String, Pair<List<Item>, List<Item>>>()
     private val serviceKeyCache = ConcurrentHashMap<String, Set<String>>()
 
-    /** Chamar fora da linha principal: monta todos os índices de uma vez. */
+    private val serviceIndexCache = ConcurrentHashMap<String, Pair<Matcher.Index, Matcher.Index>>()
+
+    /** Parte rápida: só troca as listas. Os índices pesados vêm depois, em buildIndexes(). */
     fun set(s: CatalogStore.Snapshot) {
         val mById = s.movies.associateBy { it.id }
         val sById = s.series.associateBy { it.id }
-        val mIdx = Matcher.Index(s.movies)
-        val sIdx = Matcher.Index(s.series)
-        val mSearch = s.movies.map { Matcher.searchKey(it.title) to it }
-        val sSearch = s.series.map { Matcher.searchKey(it.title) to it }
         serviceCache.clear()
         serviceKeyCache.clear()
+        serviceIndexCache.clear()
         movieCats = s.movieCats
         seriesCats = s.seriesCats
         movies = s.movies
         series = s.series
         movieById = mById
         seriesById = sById
+    }
+
+    /** Parte pesada (busca e Top 10). Roda em segundo plano depois que a tela já apareceu. */
+    fun buildIndexes() {
+        val m = movies
+        val s = series
+        val mIdx = Matcher.Index(m)
+        val sIdx = Matcher.Index(s)
+        val mSearch = m.map { Matcher.searchKey(it.title) to it }
+        val sSearch = s.map { Matcher.searchKey(it.title) to it }
+        if (m !== movies || s !== series) return
         movieIndex = mIdx
         seriesIndex = sIdx
         movieSearch = mSearch
         seriesSearch = sSearch
+    }
+
+    fun serviceIndex(id: String): Pair<Matcher.Index, Matcher.Index> {
+        serviceIndexCache[id]?.let { return it }
+        val (m, s) = serviceItems(id)
+        val r = Matcher.Index(m) to Matcher.Index(s)
+        serviceIndexCache[id] = r
+        return r
     }
 
     /** Filmes e séries das categorias de um streaming. */
@@ -81,20 +99,55 @@ object CatalogStore {
                 "${series.maxOfOrNull { it.added } ?: 0}:${movieCats.size}:${seriesCats.size}"
     }
 
-    private fun file(c: Context) = File(c.filesDir, "catalogo.json")
+    private const val HEADER = "#cinecasa-catalogo-v2"
 
+    private fun file(c: Context) = File(c.filesDir, "catalogo.tsv")
+
+    private fun clean(v: String?): String =
+        v?.replace('\t', ' ')?.replace('\n', ' ')?.replace('\r', ' ') ?: ""
+
+    private fun opt(v: String): String? = v.ifEmpty { null }
+
+    /** Formato simples, uma linha por item: abre muito mais rápido que JSON. */
     fun load(c: Context): Snapshot? = try {
+        File(c.filesDir, "catalogo.json").delete()
         val f = file(c)
         if (!f.exists()) {
             null
         } else {
-            val o = JSONObject(f.readText())
-            Snapshot(
-                items(o.optJSONArray("m")),
-                items(o.optJSONArray("s")),
-                cats(o.optJSONArray("mc")),
-                cats(o.optJSONArray("sc")),
-            )
+            val movies = ArrayList<Item>()
+            val series = ArrayList<Item>()
+            val mc = ArrayList<Category>()
+            val sc = ArrayList<Category>()
+            var ok = false
+            f.bufferedReader(Charsets.UTF_8).useLines { lines ->
+                for (line in lines) {
+                    if (!ok) {
+                        ok = line == HEADER
+                        if (!ok) break
+                        continue
+                    }
+                    val p = line.split('\t')
+                    when (p[0]) {
+                        "M", "S" -> if (p.size >= 8) {
+                            val item = Item(
+                                kind = if (p[0] == "M") Kind.MOVIE else Kind.SERIES,
+                                id = p[1],
+                                title = p[2],
+                                poster = opt(p[3]),
+                                categoryId = opt(p[4]),
+                                ext = opt(p[5]),
+                                rating = opt(p[6]),
+                                added = p[7].toLongOrNull() ?: 0L,
+                            )
+                            if (p[0] == "M") movies.add(item) else series.add(item)
+                        }
+                        "MC" -> if (p.size >= 3) mc.add(Category(p[1], p[2]))
+                        "SC" -> if (p.size >= 3) sc.add(Category(p[1], p[2]))
+                    }
+                }
+            }
+            if (ok) Snapshot(movies, series, mc, sc) else null
         }
     } catch (e: Exception) {
         null
@@ -102,37 +155,32 @@ object CatalogStore {
 
     fun save(c: Context, s: Snapshot) {
         try {
-            val o = JSONObject()
-            o.put("m", JSONArray().apply { s.movies.forEach { put(it.toJson()) } })
-            o.put("s", JSONArray().apply { s.series.forEach { put(it.toJson()) } })
-            o.put("mc", JSONArray().apply { s.movieCats.forEach { put(JSONObject().put("id", it.id).put("n", it.name)) } })
-            o.put("sc", JSONArray().apply { s.seriesCats.forEach { put(JSONObject().put("id", it.id).put("n", it.name)) } })
             val tmp = File(c.filesDir, "catalogo.tmp")
-            tmp.writeText(o.toString())
+            tmp.bufferedWriter(Charsets.UTF_8).use { w ->
+                w.write(HEADER)
+                w.write("\n")
+                fun item(tag: String, i: Item) {
+                    w.write(tag); w.write("\t")
+                    w.write(clean(i.id)); w.write("\t")
+                    w.write(clean(i.title)); w.write("\t")
+                    w.write(clean(i.poster)); w.write("\t")
+                    w.write(clean(i.categoryId)); w.write("\t")
+                    w.write(clean(i.ext)); w.write("\t")
+                    w.write(clean(i.rating)); w.write("\t")
+                    w.write(i.added.toString()); w.write("\n")
+                }
+                s.movies.forEach { item("M", it) }
+                s.series.forEach { item("S", it) }
+                s.movieCats.forEach { w.write("MC\t" + clean(it.id) + "\t" + clean(it.name) + "\n") }
+                s.seriesCats.forEach { w.write("SC\t" + clean(it.id) + "\t" + clean(it.name) + "\n") }
+            }
             if (!tmp.renameTo(file(c))) {
-                file(c).writeText(o.toString())
+                tmp.copyTo(file(c), overwrite = true)
                 tmp.delete()
             }
         } catch (e: Exception) {
             // Sem espaço ou erro de escrita: o app continua funcionando sem o cache.
         }
-    }
-
-    private fun items(a: JSONArray?): List<Item> {
-        if (a == null) return emptyList()
-        val out = ArrayList<Item>(a.length())
-        for (i in 0 until a.length()) a.optJSONObject(i)?.let { o -> Item.fromJson(o)?.let { out.add(it) } }
-        return out
-    }
-
-    private fun cats(a: JSONArray?): List<Category> {
-        if (a == null) return emptyList()
-        val out = ArrayList<Category>(a.length())
-        for (i in 0 until a.length()) {
-            val o = a.optJSONObject(i) ?: continue
-            out.add(Category(o.optString("id"), o.optString("n")))
-        }
-        return out
     }
 }
 
@@ -220,14 +268,14 @@ object Matcher {
 
     class Index(items: List<Item>) {
         private val exact = HashMap<String, Item>()
-        private val keys = ArrayList<Pair<String, Item>>(items.size)
+        private val byFirstWord = HashMap<String, ArrayList<Pair<String, Item>>>()
 
         init {
             for (i in items) {
                 val k = key(i.title)
                 if (k.isEmpty()) continue
                 if (!exact.containsKey(k)) exact[k] = i
-                keys.add(k to i)
+                byFirstWord.getOrPut(k.substringBefore(' ')) { ArrayList() }.add(k to i)
             }
         }
 
@@ -241,7 +289,8 @@ object Matcher {
             for (k in ks) exact[k]?.let { return it }
             for (k in ks) {
                 if (k.length < 4) continue
-                keys.firstOrNull { it.first.startsWith("$k ") }?.let { return it.second }
+                val prefix = "$k "
+                byFirstWord[k.substringBefore(' ')]?.firstOrNull { it.first.startsWith(prefix) }?.let { return it.second }
             }
             return null
         }

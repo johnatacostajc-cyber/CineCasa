@@ -7,6 +7,7 @@ import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.StateListDrawable
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.ImageView
@@ -149,6 +150,10 @@ class MainFragment : BrowseSupportFragment() {
     private var continueRow: ListRow? = null
     private val trendRows = ArrayList<ListRow>()
     private var shownSig: String? = null
+    private var indexesReady = false
+    private var accountAdapter: ArrayObjectAdapter? = null
+    private var timeCache: Long = -1
+    private var timeServer: Long = -1
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -189,17 +194,34 @@ class MainFragment : BrowseSupportFragment() {
                 }
             }
 
+            val start = SystemClock.elapsedRealtime()
             val cached = withContext(Dispatchers.IO) { CatalogStore.load(ctx) }
             if (cached != null && (cached.movies.isNotEmpty() || cached.series.isNotEmpty())) {
                 show(cached)
+                timeCache = SystemClock.elapsedRealtime() - start
+                updateDiag()
             } else {
                 Toast.makeText(ctx, "Carregando catálogo pela primeira vez…", Toast.LENGTH_LONG).show()
             }
 
+            val netStart = SystemClock.elapsedRealtime()
             val fresh = fetchAll(acc)
+            timeServer = SystemClock.elapsedRealtime() - netStart
             if (fresh != null) {
                 withContext(Dispatchers.IO) { CatalogStore.save(ctx, fresh) }
-                if (fresh.signature() != shownSig) show(fresh)
+                if (shownSig == null) {
+                    show(fresh)
+                } else if (fresh.signature() != shownSig) {
+                    // Já tem catálogo na tela: atualiza por trás, sem recarregar a tela.
+                    // As novidades aparecem nas fileiras na próxima vez que o app abrir.
+                    withContext(Dispatchers.Default) {
+                        Catalog.set(fresh)
+                        Catalog.buildIndexes()
+                    }
+                    shownSig = fresh.signature()
+                    showTrending()
+                }
+                updateDiag()
             } else if (shownSig == null) {
                 Toast.makeText(
                     ctx,
@@ -231,6 +253,7 @@ class MainFragment : BrowseSupportFragment() {
     }
 
     private suspend fun show(snap: CatalogStore.Snapshot) {
+        indexesReady = false
         val home = withContext(Dispatchers.Default) {
             Catalog.set(snap)
             val notService = { c: Category -> Streaming.match(c.name) == null }
@@ -264,16 +287,40 @@ class MainFragment : BrowseSupportFragment() {
             for (s in home.seriesShelves) addRow(headerId++, s.title, s.items)
         }
         rowsAdapter.add(DividerRow())
-        addRow(headerId, "Conta", listOf(Item(Kind.ACTION, "logout", "Trocar conta / sair")))
+        val acct = ArrayObjectAdapter(posters)
+        acct.add(Item(Kind.ACTION, "logout", "Trocar conta / sair"))
+        acct.add(diagItem())
+        accountAdapter = acct
+        rowsAdapter.add(ListRow(HeaderItem(headerId, "Conta"), acct))
 
         shownSig = snap.signature()
-        showTrending()
+        // Índices de busca e Top 10 são montados depois que a tela já apareceu.
+        lifecycleScope.launch {
+            withContext(Dispatchers.Default) { Catalog.buildIndexes() }
+            indexesReady = true
+            showTrending()
+        }
+    }
+
+    private fun secs(ms: Long) = String.format(java.util.Locale("pt", "BR"), "%.1fs", ms / 1000.0)
+
+    private fun diagItem(): Item {
+        val parts = ArrayList<String>()
+        if (timeCache >= 0) parts.add("abriu em ${secs(timeCache)}")
+        if (timeServer >= 0) parts.add("servidor ${secs(timeServer)}")
+        parts.add("${Catalog.movies.size} filmes, ${Catalog.series.size} séries")
+        return Item(Kind.ACTION, "diag", "Desempenho", subtitle = parts.joinToString(" · "))
+    }
+
+    private fun updateDiag() {
+        val a = accountAdapter ?: return
+        if (a.size() >= 2) a.replace(1, diagItem())
     }
 
     /** Fileiras "Top 10 da semana" logo abaixo de "Continuar assistindo". */
     private fun showTrending() {
         val t = Catalog.top10 ?: return
-        if (shownSig == null) return
+        if (shownSig == null || !indexesReady) return
         lifecycleScope.launch {
             val ranked = withContext(Dispatchers.Default) {
                 Matcher.rank(t.trending.movies, Catalog.movieIndex) to
@@ -380,9 +427,10 @@ fun servicePage(ctx: Context, svcId: String): List<Row> {
     if (movies.isEmpty() && series.isEmpty()) return emptyList()
 
     val ranks = Catalog.top10?.services?.get(svcId)
-    val topMovies = ranks?.let { Matcher.rank(it.movies, Matcher.Index(movies), Catalog.movieIndex) }
+    val (mIdx, sIdx) = Catalog.serviceIndex(svcId)
+    val topMovies = ranks?.let { Matcher.rank(it.movies, mIdx, Catalog.movieIndex) }
         .orEmpty().ifEmpty { bestRated(movies) }
-    val topSeries = ranks?.let { Matcher.rank(it.series, Matcher.Index(series), Catalog.seriesIndex) }
+    val topSeries = ranks?.let { Matcher.rank(it.series, sIdx, Catalog.seriesIndex) }
         .orEmpty().ifEmpty { bestRated(series) }
 
     val rows = ArrayList<Row>()

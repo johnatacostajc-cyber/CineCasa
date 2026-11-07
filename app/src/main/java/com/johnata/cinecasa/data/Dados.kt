@@ -3,6 +3,8 @@ package com.johnata.cinecasa.data
 import android.content.Context
 import android.content.SharedPreferences
 import android.net.Uri
+import android.util.JsonReader
+import android.util.JsonToken
 import java.io.IOException
 import java.io.Serializable
 import java.net.HttpURLConnection
@@ -200,7 +202,8 @@ object Xtream {
 
     private fun enc(s: String): String = URLEncoder.encode(s, "UTF-8")
 
-    fun httpGet(start: String): String {
+    /** Abre a conexão seguindo redirecionamentos. Quem chama deve dar disconnect(). */
+    private fun httpOpen(start: String): HttpURLConnection {
         var url = start
         repeat(6) {
             val conn = URL(url).openConnection() as HttpURLConnection
@@ -208,20 +211,87 @@ object Xtream {
             conn.connectTimeout = 15_000
             conn.readTimeout = 60_000
             conn.setRequestProperty("User-Agent", UA)
-            try {
-                val code = conn.responseCode
-                if (code in 300..399) {
-                    val loc = conn.getHeaderField("Location") ?: throw IOException("Redirecionamento inválido")
-                    url = URL(URL(url), loc).toString()
-                    return@repeat
-                }
-                if (code !in 200..299) throw IOException("O servidor respondeu com erro $code")
-                return conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-            } finally {
+            val code = conn.responseCode
+            if (code in 300..399) {
+                val loc = conn.getHeaderField("Location")
                 conn.disconnect()
+                if (loc == null) throw IOException("Redirecionamento inválido")
+                url = URL(URL(url), loc).toString()
+                return@repeat
             }
+            if (code !in 200..299) {
+                conn.disconnect()
+                throw IOException("O servidor respondeu com erro $code")
+            }
+            return conn
         }
         throw IOException("Redirecionamentos demais")
+    }
+
+    fun httpGet(start: String): String {
+        val conn = httpOpen(start)
+        try {
+            return conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    private fun apiUrl(acc: Account, action: String): String =
+        acc.server + "/player_api.php?username=" + enc(acc.user) + "&password=" + enc(acc.pass) + "&action=" + action
+
+    /**
+     * Lê listas grandes direto da rede, objeto por objeto, guardando só os campos usados.
+     * Bem mais rápido e leve que montar o JSON inteiro na memória.
+     */
+    private fun streamList(url: String, wanted: Set<String>, build: (Map<String, String>) -> Item?): List<Item> {
+        val conn = httpOpen(url)
+        try {
+            val reader = JsonReader(conn.inputStream.bufferedReader(Charsets.UTF_8))
+            reader.isLenient = true
+            if (reader.peek() != JsonToken.BEGIN_ARRAY) return emptyList()
+            val out = ArrayList<Item>()
+            val fields = HashMap<String, String>()
+            reader.beginArray()
+            while (reader.hasNext()) {
+                if (reader.peek() != JsonToken.BEGIN_OBJECT) {
+                    reader.skipValue()
+                    continue
+                }
+                fields.clear()
+                reader.beginObject()
+                while (reader.hasNext()) {
+                    val name = reader.nextName()
+                    if (name !in wanted) {
+                        reader.skipValue()
+                        continue
+                    }
+                    when (reader.peek()) {
+                        JsonToken.STRING, JsonToken.NUMBER -> fields[name] = reader.nextString()
+                        JsonToken.BOOLEAN -> fields[name] = reader.nextBoolean().toString()
+                        JsonToken.NULL -> reader.nextNull()
+                        else -> reader.skipValue()
+                    }
+                }
+                reader.endObject()
+                build(fields)?.let { out.add(it) }
+            }
+            reader.endArray()
+            return out
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    private fun field(m: Map<String, String>, k: String): String? {
+        val v = m[k]?.trim() ?: return null
+        return if (v.isEmpty() || v == "null") null else v
+    }
+
+    private fun ratingOf(r: String?): String? {
+        val d = r?.replace(',', '.')?.toDoubleOrNull() ?: return null
+        if (d <= 0.0) return null
+        return String.format(java.util.Locale.US, "%.1f", d)
     }
 
     private fun api(acc: Account, action: String?, extra: String = ""): String {
@@ -262,18 +332,21 @@ object Xtream {
         }
     }
 
+    private val movieFields = setOf("stream_id", "name", "stream_icon", "category_id", "container_extension", "rating", "added")
+    private val seriesFields = setOf("series_id", "name", "cover", "category_id", "rating", "last_modified")
+
     suspend fun movies(acc: Account): List<Item> = withContext(Dispatchers.IO) {
-        objects(api(acc, "get_vod_streams")).mapNotNull { o ->
-            val id = o.str("stream_id") ?: return@mapNotNull null
+        streamList(apiUrl(acc, "get_vod_streams"), movieFields) { m ->
+            val id = field(m, "stream_id") ?: return@streamList null
             Item(
                 kind = Kind.MOVIE,
                 id = id,
-                title = o.str("name") ?: "Sem título",
-                poster = o.str("stream_icon"),
-                categoryId = o.str("category_id"),
-                ext = o.str("container_extension") ?: "mp4",
-                rating = rating(o),
-                added = o.optLong("added", 0L),
+                title = field(m, "name") ?: "Sem título",
+                poster = field(m, "stream_icon"),
+                categoryId = field(m, "category_id"),
+                ext = field(m, "container_extension") ?: "mp4",
+                rating = ratingOf(field(m, "rating")),
+                added = field(m, "added")?.toLongOrNull() ?: 0L,
             )
         }
     }
@@ -285,16 +358,16 @@ object Xtream {
     }
 
     suspend fun series(acc: Account): List<Item> = withContext(Dispatchers.IO) {
-        objects(api(acc, "get_series")).mapNotNull { o ->
-            val id = o.str("series_id") ?: return@mapNotNull null
+        streamList(apiUrl(acc, "get_series"), seriesFields) { m ->
+            val id = field(m, "series_id") ?: return@streamList null
             Item(
                 kind = Kind.SERIES,
                 id = id,
-                title = o.str("name") ?: "Sem título",
-                poster = o.str("cover"),
-                categoryId = o.str("category_id"),
-                rating = rating(o),
-                added = o.optLong("last_modified", 0L),
+                title = field(m, "name") ?: "Sem título",
+                poster = field(m, "cover"),
+                categoryId = field(m, "category_id"),
+                rating = ratingOf(field(m, "rating")),
+                added = field(m, "last_modified")?.toLongOrNull() ?: 0L,
             )
         }
     }
